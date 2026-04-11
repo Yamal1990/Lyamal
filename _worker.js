@@ -1,40 +1,83 @@
 import { connect } from "cloudflare:sockets";
 
-// Variables
+// --- KONFIGURASI ---
 const rootDomain = "yamalxdayat.workers.dev"; 
 const serviceName = "lamine"; 
-const apiKey = "Workers Builds - 2026-04-12 04:12"; // Kosongkan saja jika tidak punya Global API Key
+const apiKey = ""; 
 const apiEmail = "yamalxdayat@gmail.com"; 
-const accountID = ""; // Kosongkan jika tidak ada
-const zoneID = ""; // Kosongkan jika tidak ada
+const accountID = ""; 
+const zoneID = ""; 
 
-let isApiReady = false;
-let proxyIP = "";
-let cachedProxyList = [];
-
-// Constant
+// --- CONSTANT ---
 const APP_DOMAIN = `${serviceName}.${rootDomain}`;
-const PORTS = [443, 80];
-// Fungsi reverse manual untuk menghindari error fungsi tidak ditemukan
-const PROTOCOLS = ["trojan", "vless", "ss"]; 
 const KV_PROXY_URL = "https://raw.githubusercontent.com/FoolVPN-ID/Nautica/refs/heads/main/kvProxyList.json";
 const PROXY_BANK_URL = "https://raw.githubusercontent.com/FoolVPN-ID/Nautica/refs/heads/main/proxyList.txt";
-const DNS_SERVER_ADDRESS = "8.8.8.8";
-const DNS_SERVER_PORT = 53;
-const PROXY_HEALTH_CHECK_API = "https://id1.foolvpn.me/api/v1/check";
-const CONVERTER_URL = "https://api.foolvpn.me/convert";
-const CORS_HEADER_OPTIONS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,HEAD,POST,OPTIONS",
-  "Access-Control-Max-Age": "86400",
-};
 
-// --- FUNGSI TAMBAHAN AGAR TIDAK ERROR 1101 ---
-function reverse(str) {
-    return str.split("").reverse().join("");
-}
+// --- HELPERS ---
+function reverse(str) { return str.split("").reverse().join(""); }
 
 function getFlagEmoji(countryCode) {
+    if (!countryCode || countryCode === "Unknown") return "🌐";
+    return countryCode.toUpperCase().replace(/./g, char => String.fromCodePoint(char.charCodeAt(0) + 127397));
+}
+
+class Document {
+    constructor() {
+        this.title = "Nautica Dashboard";
+        this.proxies = [];
+    }
+    setTitle(t) { this.title = t; }
+    registerProxies(p, list) { this.proxies.push({ detail: p, links: list }); }
+    build() {
+        return `
+        <html>
+        <head><title>${this.title}</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+        <body style="font-family:sans-serif; background:#f4f4f4; padding:20px;">
+            <div style="max-width:600px; margin:auto; background:white; padding:20px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+                <h1 style="color:#2563eb;">${this.title}</h1>
+                <p>Status: <span style="color:green;">Online</span></p>
+                <hr>
+                <h3>Salin Config di Bawah:</h3>
+                <textarea style="width:100%; height:200px; border:1px solid #ddd; padding:10px; border-radius:5px;">${this.proxies.map(p => p.links.join('\n')).join('\n\n')}</textarea>
+            </div>
+        </body>
+        </html>`;
+    }
+}
+
+// --- CORE ---
+async function getProxyList() {
+    try {
+        const res = await fetch(PROXY_BANK_URL);
+        if (res.status !== 200) return [];
+        const text = await res.text();
+        return text.split("\n").filter(Boolean).map(entry => {
+            const [ip, port, country, org] = entry.split(",");
+            return { proxyIP: ip, proxyPort: port, country, org };
+        });
+    } catch { return []; }
+}
+
+export default {
+    async fetch(request, env) {
+        const url = new URL(request.url);
+        
+        if (url.pathname.startsWith("/sub")) {
+            const proxyList = await getProxyList();
+            const doc = new Document();
+            const uuid = crypto.randomUUID();
+            
+            proxyList.slice(0, 15).forEach(p => {
+                const link = `vless://${uuid}@${url.hostname}:443?encryption=none&security=tls&sni=${url.hostname}&type=ws&host=${url.hostname}&path=%2F${p.proxyIP}-${p.proxyPort}#${getFlagEmoji(p.country)}-${p.org}`;
+                doc.registerProxies(p, [link]);
+            });
+
+            return new Response(doc.build(), { headers: { "Content-Type": "text/html" } });
+        }
+
+        return new Response("Worker Aktif. Silahkan buka: /sub", { status: 200 });
+    }
+};function getFlagEmoji(countryCode) {
     if (!countryCode || countryCode === "Unknown") return "🌐";
     const codePoints = countryCode
         .toUpperCase()
